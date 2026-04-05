@@ -8,6 +8,19 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
+  const code = request.nextUrl.searchParams.get("code");
+  const tokenHash = request.nextUrl.searchParams.get("token_hash");
+  const type = request.nextUrl.searchParams.get("type");
+
+  if ((code || (tokenHash && type)) && request.nextUrl.pathname !== "/auth/callback") {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    if (!callbackUrl.searchParams.get("next")) {
+      callbackUrl.searchParams.set("next", "/app/dashboard");
+    }
+    return NextResponse.redirect(callbackUrl);
+  }
+
   let response = NextResponse.next({
     request,
   });
