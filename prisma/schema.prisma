@@ -1,0 +1,504 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  OPS
+  BILLING
+  VIEWER
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LoadStatus {
+  IMPORTED
+  INCOMPLETE
+  READY
+  IN_REVIEW
+  CLAIMED
+  CLOSED
+}
+
+enum SourceType {
+  CSV
+  MANUAL
+  API_FUTURE
+}
+
+enum StopType {
+  PICKUP
+  DELIVERY
+}
+
+enum DocumentType {
+  BOL
+  POD
+  LUMPER_RECEIPT
+  RATE_CONFIRMATION
+  EMAIL_SCREENSHOT
+  CHECKIN_SCREENSHOT
+  OTHER
+}
+
+enum ExtractionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  NEEDS_REVIEW
+  MANUAL
+}
+
+enum AccessorialType {
+  DETENTION
+  LAYOVER
+  TONU
+  LUMPER
+}
+
+enum EligibilityStatus {
+  ELIGIBLE
+  MISSING_EVIDENCE
+  NOT_ELIGIBLE
+  NEEDS_REVIEW
+}
+
+enum ClaimStatus {
+  DRAFT
+  READY_TO_SEND
+  SENT
+  PARTIAL_PAID
+  PAID
+  DISPUTED
+  WRITTEN_OFF
+}
+
+enum ClaimMessageDirection {
+  OUTBOUND
+  INBOUND
+  INTERNAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INACTIVE
+  UNCONFIGURED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum DetentionRoundingMode {
+  UP
+  NEAREST
+  DOWN
+}
+
+enum LumperReimbursementMode {
+  ACTUAL
+  CAPPED_ACTUAL
+}
+
+model Organization {
+  id             String               @id @default(cuid())
+  name           String
+  slug           String               @unique
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  memberships    Membership[]
+  customers      Customer[]
+  facilities     Facility[]
+  carriers       Carrier[]
+  ruleSets       RuleSet[]
+  loads          Load[]
+  documents      Document[]
+  claims         Claim[]
+  candidates     AccessorialCandidate[]
+  auditLogs      AuditLog[]
+  subscription   Subscription?
+  invitations    Invitation[]
+  csvImportJobs  CsvImportJob[]
+  mappingTemplates CsvMappingTemplate[]
+}
+
+model User {
+  id               String        @id
+  email            String        @unique
+  fullName         String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  memberships      Membership[]
+  uploadedDocuments Document[]   @relation("UploadedDocuments")
+  reviewedDocuments Document[]   @relation("ReviewedDocuments")
+  createdClaims    Claim[]       @relation("CreatedClaims")
+  auditLogs        AuditLog[]
+  invitationsSent  Invitation[]  @relation("InvitationSender")
+}
+
+model Membership {
+  id             String          @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MembershipRole
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Customer {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  billingEmail   String?
+  status         CustomerStatus @default(ACTIVE)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facilities     Facility[]
+  ruleSets       RuleSet[]
+  loads          Load[]
+  claims         Claim[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model Facility {
+  id             String       @id @default(cuid())
+  organizationId String
+  customerId     String
+  name           String
+  address        String?
+  city           String?
+  state          String?
+  timezone       String
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ruleSets       RuleSet[]
+  loads          Load[]
+
+  @@unique([organizationId, customerId, name])
+  @@index([organizationId, customerId])
+}
+
+model Carrier {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  contactEmail   String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  loads          Load[]
+
+  @@unique([organizationId, name])
+}
+
+model RuleSet {
+  id                                String                  @id @default(cuid())
+  organizationId                    String
+  customerId                        String?
+  facilityId                        String?
+  name                              String
+  priority                          Int                     @default(0)
+  isDefault                         Boolean                 @default(false)
+  currency                          String                  @default("USD")
+  active                            Boolean                 @default(true)
+  detentionEnabled                  Boolean                 @default(true)
+  detentionFreeMinutes              Int                     @default(120)
+  detentionRatePerHour              Decimal                 @default(75.0) @db.Decimal(10, 2)
+  detentionBillingIncrementMinutes  Int                     @default(60)
+  detentionRoundingMode             DetentionRoundingMode   @default(UP)
+  detentionCapAmount                Decimal?                @db.Decimal(10, 2)
+  layoverEnabled                    Boolean                 @default(true)
+  layoverFlatAmount                 Decimal                 @default(250.0) @db.Decimal(10, 2)
+  tonuEnabled                       Boolean                 @default(true)
+  tonuFlatAmount                    Decimal                 @default(150.0) @db.Decimal(10, 2)
+  lumperEnabled                     Boolean                 @default(true)
+  lumperReimbursementMode           LumperReimbursementMode @default(ACTUAL)
+  lumperCapAmount                   Decimal?                @db.Decimal(10, 2)
+  notes                             String?
+  effectiveStartDate                DateTime                @default(now())
+  effectiveEndDate                  DateTime?
+  createdAt                         DateTime                @default(now())
+  updatedAt                         DateTime                @updatedAt
+  organization                      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer                          Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  facility                          Facility?               @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  candidates                        AccessorialCandidate[]
+
+  @@index([organizationId, customerId, facilityId, active])
+}
+
+model Load {
+  id                 String               @id @default(cuid())
+  organizationId     String
+  externalLoadNumber String
+  customerId         String
+  carrierId          String?
+  facilityId         String?
+  status             LoadStatus           @default(IMPORTED)
+  pickupDate         DateTime
+  deliveryDate       DateTime
+  commodity          String?
+  sourceType         SourceType           @default(CSV)
+  sourceFileName     String?
+  notes              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer           Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  carrier            Carrier?             @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  facility           Facility?            @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  stops              Stop[]
+  documents          Document[]
+  candidates         AccessorialCandidate[]
+  claim              Claim?
+
+  @@unique([organizationId, externalLoadNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, pickupDate])
+}
+
+model Stop {
+  id               String    @id @default(cuid())
+  loadId           String
+  type             StopType
+  facilityName     String
+  city             String?
+  state            String?
+  timezone         String
+  appointmentStart DateTime?
+  appointmentEnd   DateTime?
+  arrivalTime      DateTime?
+  checkInTime      DateTime?
+  dockInTime       DateTime?
+  loadedOutTime    DateTime?
+  departureTime    DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  load             Load      @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  candidates       AccessorialCandidate[]
+
+  @@index([loadId, type])
+}
+
+model Document {
+  id                   String           @id @default(cuid())
+  organizationId       String
+  loadId               String
+  fileName             String
+  fileType             String
+  fileSize             Int
+  storagePath          String
+  storageUrl           String
+  documentType         DocumentType?
+  uploadedByUserId     String
+  extractionStatus     ExtractionStatus @default(PENDING)
+  extractionConfidence Decimal?         @db.Decimal(5, 2)
+  rawExtractionJson    Json?
+  reviewedExtractionJson Json?
+  extractionError      String?
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  organization         Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  load                 Load             @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  uploadedByUser       User             @relation("UploadedDocuments", fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+  reviewedByUser       User?            @relation("ReviewedDocuments", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  extractedFields      ExtractedField[]
+
+  @@index([organizationId, loadId, extractionStatus])
+}
+
+model ExtractedField {
+  id         String   @id @default(cuid())
+  documentId String
+  fieldName  String
+  fieldValue String
+  confidence Decimal? @db.Decimal(5, 2)
+  sourcePage Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, fieldName])
+}
+
+model AccessorialCandidate {
+  id                String             @id @default(cuid())
+  organizationId    String
+  loadId            String
+  stopId            String?
+  type              AccessorialType
+  eligibilityStatus EligibilityStatus
+  calculatedAmount  Decimal            @default(0) @db.Decimal(10, 2)
+  currency          String             @default("USD")
+  explanation       String
+  evidenceSummary   String
+  calculationJson   Json?
+  ruleSetId         String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  load              Load               @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  stop              Stop?              @relation(fields: [stopId], references: [id], onDelete: SetNull)
+  ruleSet           RuleSet            @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
+  claimLineItems    ClaimLineItem[]
+
+  @@index([organizationId, loadId, type])
+  @@index([organizationId, eligibilityStatus])
+}
+
+model Claim {
+  id              String          @id @default(cuid())
+  organizationId  String
+  loadId          String          @unique
+  customerId      String
+  claimNumber     String
+  status          ClaimStatus     @default(DRAFT)
+  totalAmount     Decimal         @default(0) @db.Decimal(10, 2)
+  paidAmount      Decimal         @default(0) @db.Decimal(10, 2)
+  sentAt          DateTime?
+  paidAt          DateTime?
+  disputeReason   String?
+  createdByUserId String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  load            Load            @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdByUser   User            @relation("CreatedClaims", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  lineItems       ClaimLineItem[]
+  messages        ClaimMessage[]
+
+  @@unique([organizationId, claimNumber])
+  @@index([organizationId, status])
+}
+
+model ClaimLineItem {
+  id               String            @id @default(cuid())
+  claimId          String
+  candidateId      String?
+  accessorialType  AccessorialType
+  amount           Decimal           @db.Decimal(10, 2)
+  description      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  claim            Claim             @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  candidate        AccessorialCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([claimId])
+}
+
+model ClaimMessage {
+  id        String                @id @default(cuid())
+  claimId   String
+  direction ClaimMessageDirection
+  subject   String
+  body      String
+  sentAt    DateTime?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  claim     Claim                 @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId, direction])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String?
+  entityType     String
+  entityId       String
+  action         String
+  metadataJson   Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, entityType, entityId])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               SubscriptionStatus @default(TRIALING)
+  currentPeriodEnd     DateTime?
+  trialEndsAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Invitation {
+  id             String           @id @default(cuid())
+  organizationId String
+  email          String
+  role           MembershipRole
+  token          String           @unique
+  status         InvitationStatus @default(PENDING)
+  invitedByUserId String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedByUser  User?            @relation("InvitationSender", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, email, status])
+}
+
+model CsvImportJob {
+  id             String       @id @default(cuid())
+  organizationId String
+  fileName       String
+  rowCount       Int
+  status         String
+  summaryJson    Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}
+
+model CsvMappingTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  mappingJson    Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+}
