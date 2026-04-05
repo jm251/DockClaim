@@ -47,7 +47,14 @@ const envSchema = z.object({
   STRIPE_PRICE_PRO_ID: z.string().optional(),
 });
 
-export const env = envSchema.parse(process.env);
+const normalizedProcessEnv = Object.fromEntries(
+  Object.entries(process.env).map(([key, value]) => [
+    key,
+    typeof value === "string" ? value.trim() : value,
+  ]),
+);
+
+export const env = envSchema.parse(normalizedProcessEnv);
 
 export const featureFlags = {
   isDemoMode: env.DEMO_MODE,
