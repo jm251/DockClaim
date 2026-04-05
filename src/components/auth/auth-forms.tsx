@@ -121,10 +121,14 @@ export function SignupForm({ inviteToken }: { inviteToken?: string }) {
       return;
     }
 
+    const confirmationUrl = new URL("/auth/callback", window.location.origin);
+    confirmationUrl.searchParams.set("next", "/app/dashboard");
+
     const { data, error } = await client.auth.signUp({
       email: values.email,
       password: values.password,
       options: {
+        emailRedirectTo: confirmationUrl.toString(),
         data: {
           fullName: values.fullName,
           organizationName: values.organizationName,
@@ -139,10 +143,10 @@ export function SignupForm({ inviteToken }: { inviteToken?: string }) {
     }
 
     if (!data.session) {
-      await client.auth.signInWithPassword({
-        email: values.email,
-        password: values.password,
-      });
+      toast.success("Account created. Check your email to confirm your account.");
+      router.push("/login");
+      router.refresh();
+      return;
     }
 
     toast.success("Account created.");
