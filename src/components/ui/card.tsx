@@ -5,7 +5,7 @@ export function Card({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 export function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("flex items-start justify-between gap-4 p-5 sm:p-6", className)} {...props} />;
+  return <div className={cn("flex flex-col items-start gap-3 p-5 sm:p-6", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.ComponentProps<"h3">) {
