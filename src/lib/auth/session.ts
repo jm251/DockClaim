@@ -2,6 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
+import { cache } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 import { buildDefaultRuleSet } from "@/lib/domain/defaults";
@@ -12,17 +14,43 @@ import { slugify } from "@/lib/utils";
 
 const DEMO_SESSION_COOKIE = "dockclaim-demo-user";
 
-async function findUniqueSlug(base: string) {
+const appContextUserInclude = {
+  memberships: {
+    include: {
+      organization: {
+        include: {
+          subscription: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+} satisfies Prisma.UserInclude;
+
+type SlugLookupClient = Pick<typeof prisma, "organization"> | Pick<Prisma.TransactionClient, "organization">;
+
+async function findUniqueSlug(base: string, client: SlugLookupClient = prisma) {
   const candidate = slugify(base) || "dockclaim";
   let slug = candidate;
   let index = 1;
 
-  while (await prisma.organization.findUnique({ where: { slug } })) {
+  while (await client.organization.findUnique({ where: { slug } })) {
     slug = `${candidate}-${index}`;
     index += 1;
   }
 
   return slug;
+}
+
+async function loadAppContextUser(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    include: appContextUserInclude,
+  });
+}
+
+async function acquireBootstrapLock(tx: Prisma.TransactionClient, userId: string) {
+  await tx.$queryRaw`select pg_advisory_xact_lock(hashtext(${userId}))`;
 }
 
 async function bootstrapNewUser(authUser: SupabaseUser) {
@@ -32,30 +60,57 @@ async function bootstrapNewUser(authUser: SupabaseUser) {
     authUser.email?.split("@")[0] ||
     "DockClaim User";
   const inviteToken = authUser.user_metadata.inviteToken as string | undefined;
+  const organizationName =
+    (authUser.user_metadata.organizationName as string | undefined) || `${fullName} Freight Team`;
+  const email = authUser.email ?? `${authUser.id}@unknown.local`;
 
-  if (inviteToken) {
-    const invitation = await prisma.invitation.findUnique({
-      where: { token: inviteToken },
-      include: { organization: { include: { subscription: true } } },
+  return prisma.$transaction(async (tx) => {
+    await acquireBootstrapLock(tx, authUser.id);
+
+    let user = await tx.user.findUnique({
+      where: { id: authUser.id },
+      include: appContextUserInclude,
     });
 
-    if (invitation && invitation.status === "PENDING" && invitation.expiresAt > new Date()) {
-      const user = await prisma.$transaction(async (tx) => {
-        const createdUser = await tx.user.create({
-          data: {
-            id: authUser.id,
-            email: authUser.email ?? `${authUser.id}@unknown.local`,
-            fullName,
+    if (user?.memberships.length) {
+      return user;
+    }
+
+    if (!user) {
+      user = await tx.user.create({
+        data: {
+          id: authUser.id,
+          email,
+          fullName,
+        },
+        include: appContextUserInclude,
+      });
+    }
+
+    if (inviteToken) {
+      const invitation = await tx.invitation.findUnique({
+        where: { token: inviteToken },
+      });
+
+      if (invitation && invitation.status === "PENDING" && invitation.expiresAt > new Date()) {
+        const membership = await tx.membership.findUnique({
+          where: {
+            organizationId_userId: {
+              organizationId: invitation.organizationId,
+              userId: authUser.id,
+            },
           },
         });
 
-        await tx.membership.create({
-          data: {
-            organizationId: invitation.organizationId,
-            userId: createdUser.id,
-            role: invitation.role,
-          },
-        });
+        if (!membership) {
+          await tx.membership.create({
+            data: {
+              organizationId: invitation.organizationId,
+              userId: authUser.id,
+              role: invitation.role,
+            },
+          });
+        }
 
         await tx.invitation.update({
           where: { id: invitation.id },
@@ -65,44 +120,18 @@ async function bootstrapNewUser(authUser: SupabaseUser) {
           },
         });
 
-        return createdUser;
-      });
-
-      return prisma.user.findUniqueOrThrow({
-        where: { id: user.id },
-        include: {
-          memberships: {
-            include: {
-              organization: {
-                include: {
-                  subscription: true,
-                },
-              },
-            },
-            orderBy: { createdAt: "asc" },
-          },
-        },
-      });
+        return tx.user.findUniqueOrThrow({
+          where: { id: authUser.id },
+          include: appContextUserInclude,
+        });
+      }
     }
-  }
 
-  const organizationName =
-    (authUser.user_metadata.organizationName as string | undefined) || `${fullName} Freight Team`;
-  const slug = await findUniqueSlug(organizationName);
-
-  await prisma.$transaction(async (tx) => {
+    const slug = await findUniqueSlug(organizationName, tx);
     const organization = await tx.organization.create({
       data: {
         name: organizationName,
         slug,
-      },
-    });
-
-    await tx.user.create({
-      data: {
-        id: authUser.id,
-        email: authUser.email ?? `${authUser.id}@unknown.local`,
-        fullName,
       },
     });
 
@@ -125,26 +154,15 @@ async function bootstrapNewUser(authUser: SupabaseUser) {
     await tx.ruleSet.create({
       data: buildDefaultRuleSet(organization.id),
     });
-  });
 
-  return prisma.user.findUniqueOrThrow({
-    where: { id: authUser.id },
-    include: {
-      memberships: {
-        include: {
-          organization: {
-            include: {
-              subscription: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-    },
+    return tx.user.findUniqueOrThrow({
+      where: { id: authUser.id },
+      include: appContextUserInclude,
+    });
   });
 }
 
-async function getSupabaseBackedContext() {
+const getSupabaseBackedContext = cache(async () => {
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
     return null;
@@ -158,21 +176,7 @@ async function getSupabaseBackedContext() {
     return null;
   }
 
-  let user = await prisma.user.findUnique({
-    where: { id: authUser.id },
-    include: {
-      memberships: {
-        include: {
-          organization: {
-            include: {
-              subscription: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-    },
-  });
+  let user = await loadAppContextUser(authUser.id);
 
   if (!user) {
     user = await bootstrapNewUser(authUser);
@@ -190,9 +194,9 @@ async function getSupabaseBackedContext() {
     organization: membership.organization,
     subscription: membership.organization.subscription,
   };
-}
+});
 
-async function getDemoContext() {
+const getDemoContext = cache(async () => {
   if (!featureFlags.isDemoMode) {
     return null;
   }
@@ -205,18 +209,7 @@ async function getDemoContext() {
 
   const user = await prisma.user.findUnique({
     where: { id: demoUserId },
-    include: {
-      memberships: {
-        include: {
-          organization: {
-            include: {
-              subscription: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-    },
+    include: appContextUserInclude,
   });
 
   if (!user || user.memberships.length === 0) {
@@ -230,16 +223,16 @@ async function getDemoContext() {
     organization: user.memberships[0].organization,
     subscription: user.memberships[0].organization.subscription,
   };
-}
+});
 
-export async function getCurrentAppContext() {
+export const getCurrentAppContext = cache(async () => {
   const demoContext = await getDemoContext();
   if (demoContext) {
     return demoContext;
   }
 
   return getSupabaseBackedContext();
-}
+});
 
 export async function requireAppContext() {
   const context = await getCurrentAppContext();

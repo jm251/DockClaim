@@ -42,9 +42,7 @@ export function LoginForm({ showDemoMode }: { showDemoMode: boolean }) {
       return;
     }
 
-    toast.success("Signed in.");
-    router.push("/app/dashboard");
-    router.refresh();
+    window.location.assign("/app/dashboard");
   }
 
   return (
@@ -82,8 +80,7 @@ export function LoginForm({ showDemoMode }: { showDemoMode: boolean }) {
             variant="outline"
             onClick={async () => {
               await startDemoAction();
-              router.push("/app/dashboard");
-              router.refresh();
+              window.location.assign("/app/dashboard");
             }}
           >
             Continue in demo mode
@@ -150,8 +147,7 @@ export function SignupForm({ inviteToken }: { inviteToken?: string }) {
     }
 
     toast.success("Account created.");
-    router.push("/app/dashboard");
-    router.refresh();
+    window.location.assign("/app/dashboard");
   }
 
   return (
