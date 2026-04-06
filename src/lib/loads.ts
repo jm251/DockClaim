@@ -311,7 +311,9 @@ export function getClaimAgingBucket(sentAt?: Date | null, createdAt?: Date | nul
   return "31+ days";
 }
 
-export function sumEligibleCandidates(candidates: AccessorialCandidate[]) {
+export function sumEligibleCandidates(
+  candidates: Array<Pick<AccessorialCandidate, "eligibilityStatus" | "calculatedAmount">>,
+) {
   return candidates
     .filter((candidate) => candidate.eligibilityStatus === "ELIGIBLE")
     .reduce((total, candidate) => total + Number(candidate.calculatedAmount), 0);

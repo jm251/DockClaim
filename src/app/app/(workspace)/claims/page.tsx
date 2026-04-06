@@ -1,12 +1,12 @@
 import { ClaimsTable } from "@/components/app/tables";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
-import { getAppCollections } from "@/lib/data";
+import { getClaimsList } from "@/lib/data";
 import { requireAppContext } from "@/lib/auth/session";
 
 export default async function ClaimsPage() {
   const context = await requireAppContext();
-  const { claims } = await getAppCollections(context.organization.id);
+  const claims = await getClaimsList(context.organization.id);
 
   return (
     <div className="space-y-6">

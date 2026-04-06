@@ -1,12 +1,12 @@
 import { CustomerForm } from "@/components/app/forms";
 import { CustomersTable } from "@/components/app/tables";
 import { PageHeader } from "@/components/ui/page-header";
-import { getAppCollections } from "@/lib/data";
+import { getCustomersList } from "@/lib/data";
 import { requireAppContext } from "@/lib/auth/session";
 
 export default async function CustomersPage() {
   const context = await requireAppContext();
-  const { customers } = await getAppCollections(context.organization.id);
+  const customers = await getCustomersList(context.organization.id);
 
   return (
     <div className="space-y-6">

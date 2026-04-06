@@ -1,23 +1,21 @@
 import path from "node:path";
 
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
-const DEMO_USER_ID = "00000000-0000-4000-8000-000000000001";
+const SHOWCASE_EMAIL = "ops@dockclaim.dev";
+const SHOWCASE_PASSWORD = "DockClaim123!";
 
-test("demo user can import CSV, open a load, create a claim, and see an email draft", async ({ page, context }) => {
+async function signInToShowcaseWorkspace(page: Page) {
   await page.goto("/login");
-  await expect(page.getByRole("button", { name: "Continue in demo mode" })).toBeVisible();
-
-  await context.addCookies([
-    {
-      name: "dockclaim-demo-user",
-      value: DEMO_USER_ID,
-      url: "http://127.0.0.1:3000",
-    },
-  ]);
-
-  await page.goto("/app/dashboard");
+  await page.getByLabel("Email").fill(SHOWCASE_EMAIL);
+  await page.getByLabel("Password").fill(SHOWCASE_PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/app\/dashboard/);
+}
+
+test("demo user can import CSV, open a load, create a claim, and see an email draft", async ({ page }) => {
+  await signInToShowcaseWorkspace(page);
 
   await page.goto("/app/imports");
   const csvPath = path.resolve(process.cwd(), "examples", "dockclaim-sample-loads.csv");
@@ -35,4 +33,22 @@ test("demo user can import CSV, open a load, create a claim, and see an email dr
 
   await expect(page.getByText("Email draft")).toBeVisible();
   await expect(page.getByText(/accessorial claim DC-\d{4}-\d{4}/i)).toBeVisible();
+});
+
+test("sidebar navigation shows pending feedback and a workspace skeleton before claims render", async ({
+  page,
+}) => {
+  await page.route(/\/app\/claims(\?.*)?$/, async (route) => {
+    await page.waitForTimeout(900);
+    await route.continue();
+  });
+
+  await signInToShowcaseWorkspace(page);
+
+  await page.locator('[data-sidebar-href="/app/claims"]').first().click();
+
+  await expect(page.getByTestId("sidebar-link-pending")).toContainText("Claims");
+  await expect(page.getByTestId("workspace-loading")).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/claims/);
+  await expect(page.getByRole("heading", { name: "Claim queue from draft to paid." })).toBeVisible();
 });

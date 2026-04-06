@@ -2,13 +2,13 @@ import { RuleForm } from "@/components/app/forms";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { getAppCollections } from "@/lib/data";
+import { getRulesPageData } from "@/lib/data";
 import { requireAppContext } from "@/lib/auth/session";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function RulesPage() {
   const context = await requireAppContext();
-  const { rules, customers, facilities } = await getAppCollections(context.organization.id);
+  const { rules, customers, facilities } = await getRulesPageData(context.organization.id);
 
   return (
     <div className="space-y-6">

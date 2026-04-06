@@ -1,13 +1,13 @@
 import { LoadsTable } from "@/components/app/tables";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
-import { getAppCollections } from "@/lib/data";
+import { getLoadsList } from "@/lib/data";
 import { requireAppContext } from "@/lib/auth/session";
 import { sumEligibleCandidates } from "@/lib/loads";
 
 export default async function LoadsPage() {
   const context = await requireAppContext();
-  const { loads } = await getAppCollections(context.organization.id);
+  const loads = await getLoadsList(context.organization.id);
 
   return (
     <div className="space-y-6">

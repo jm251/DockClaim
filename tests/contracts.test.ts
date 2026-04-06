@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { getSubscriptionPresentation } from "@/lib/billing";
 import { extractionSchema } from "@/lib/extraction-schema";
 import { importCommitSchema } from "@/lib/validators";
@@ -77,5 +80,22 @@ describe("contracts and guards", () => {
 
   it("throws on organization scope mismatch", () => {
     expect(() => assertOrganizationScope("org_a", "org_b")).toThrow("Organization scope mismatch.");
+  });
+
+  it("keeps sidebar-backed pages on focused data loaders", () => {
+    const sidebarPages = [
+      "src/app/app/(workspace)/imports/page.tsx",
+      "src/app/app/(workspace)/loads/page.tsx",
+      "src/app/app/(workspace)/claims/page.tsx",
+      "src/app/app/(workspace)/customers/page.tsx",
+      "src/app/app/(workspace)/facilities/page.tsx",
+      "src/app/app/(workspace)/rules/page.tsx",
+      "src/app/app/(workspace)/settings/page.tsx",
+    ];
+
+    for (const relativePath of sidebarPages) {
+      const content = readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
+      expect(content).not.toContain("getAppCollections");
+    }
   });
 });

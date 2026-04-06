@@ -2,8 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { BarChart3, Building2, FileText, Home, Import, Landmark, Menu, ScrollText, Settings, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  BarChart3,
+  Building2,
+  FileText,
+  Home,
+  Import,
+  Landmark,
+  Loader2,
+  Menu,
+  ScrollText,
+  Settings,
+  X,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,26 +44,47 @@ export function Sidebar({
 }) {
   const currentPath = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingHref(null);
+  }, [currentPath]);
 
   const links = (
     <nav className="space-y-1">
       {navigation.map((item) => {
         const active = currentPath === item.href || currentPath.startsWith(`${item.href}/`);
+        const pending = pendingHref === item.href;
         const Icon = item.icon;
 
         return (
           <Link
+            aria-busy={pending || undefined}
+            aria-current={active ? "page" : undefined}
             className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-fluid-base font-medium transition ${
-              active
+              active || pending
                 ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
                 : "text-[var(--foreground-soft)] hover:bg-[var(--surface-subtle)]"
             }`}
+            data-sidebar-href={item.href}
+            data-testid={pending ? "sidebar-link-pending" : undefined}
             href={item.href}
             key={item.href}
-            onClick={() => setMobileOpen(false)}
+            onClick={(event) => {
+              if (pending) {
+                event.preventDefault();
+                return;
+              }
+
+              setMobileOpen(false);
+              if (!active) {
+                setPendingHref(item.href);
+              }
+            }}
           >
             <Icon className="h-4 w-4" />
-            {item.label}
+            <span>{item.label}</span>
+            {pending ? <Loader2 className="ml-auto h-4 w-4 animate-spin text-[var(--primary)]" /> : null}
           </Link>
         );
       })}

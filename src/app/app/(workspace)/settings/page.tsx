@@ -2,13 +2,13 @@ import { InviteForm } from "@/components/app/forms";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { getAppCollections } from "@/lib/data";
+import { getSettingsPageData } from "@/lib/data";
 import { requireAppContext } from "@/lib/auth/session";
 import { relativeTime } from "@/lib/utils";
 
 export default async function SettingsPage() {
   const context = await requireAppContext();
-  const { invitations } = await getAppCollections(context.organization.id);
+  const invitations = await getSettingsPageData(context.organization.id);
 
   return (
     <div className="space-y-6">

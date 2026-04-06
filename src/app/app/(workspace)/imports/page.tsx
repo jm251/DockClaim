@@ -1,11 +1,11 @@
 import { ImportWizard } from "@/components/app/forms";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAppContext } from "@/lib/auth/session";
-import { getAppCollections } from "@/lib/data";
+import { getImportsPageData } from "@/lib/data";
 
 export default async function ImportsPage() {
   const context = await requireAppContext();
-  const { templates } = await getAppCollections(context.organization.id);
+  const templates = await getImportsPageData(context.organization.id);
 
   return (
     <div className="space-y-6">

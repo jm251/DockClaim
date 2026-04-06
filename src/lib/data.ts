@@ -9,31 +9,53 @@ export async function getDashboardData(organizationId: string) {
   const [loads, claims, facilities, customers] = await Promise.all([
     prisma.load.findMany({
       where: { organizationId },
-      include: {
-        candidates: true,
-        stops: true,
+      select: {
+        deliveryDate: true,
+        candidates: {
+          select: {
+            eligibilityStatus: true,
+            calculatedAmount: true,
+          },
+        },
       },
     }),
     prisma.claim.findMany({
       where: { organizationId },
-      include: {
-        customer: true,
+      select: {
+        totalAmount: true,
+        paidAmount: true,
+        sentAt: true,
+        paidAt: true,
+        createdAt: true,
       },
     }),
     prisma.facility.findMany({
       where: { organizationId },
-      include: {
+      select: {
+        id: true,
+        name: true,
         loads: {
-          include: {
-            stops: true,
+          select: {
+            stops: {
+              select: {
+                checkInTime: true,
+                departureTime: true,
+              },
+            },
           },
         },
       },
     }),
     prisma.customer.findMany({
       where: { organizationId },
-      include: {
-        claims: true,
+      select: {
+        id: true,
+        name: true,
+        claims: {
+          select: {
+            paidAmount: true,
+          },
+        },
       },
     }),
   ]);
@@ -93,62 +115,183 @@ export async function getDashboardData(organizationId: string) {
   };
 }
 
-export async function getAppCollections(organizationId: string) {
-  const [loads, claims, customers, facilities, rules, templates, invitations] = await Promise.all([
-    prisma.load.findMany({
-      where: { organizationId },
-      include: {
-        customer: true,
-        facility: true,
-        carrier: true,
-        candidates: true,
-        claim: true,
+export async function getLoadsList(organizationId: string) {
+  return prisma.load.findMany({
+    where: { organizationId },
+    select: {
+      id: true,
+      externalLoadNumber: true,
+      status: true,
+      customer: {
+        select: {
+          name: true,
+          billingEmail: true,
+        },
       },
-      orderBy: { updatedAt: "desc" },
-    }),
-    prisma.claim.findMany({
-      where: { organizationId },
-      include: {
-        customer: true,
-        load: true,
-        lineItems: true,
-        messages: true,
+      facility: {
+        select: {
+          name: true,
+        },
       },
-      orderBy: { updatedAt: "desc" },
+      candidates: {
+        select: {
+          eligibilityStatus: true,
+          calculatedAmount: true,
+        },
+      },
+      claim: {
+        select: {
+          status: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getClaimsList(organizationId: string) {
+  return prisma.claim.findMany({
+    where: { organizationId },
+    select: {
+      id: true,
+      claimNumber: true,
+      status: true,
+      totalAmount: true,
+      customer: {
+        select: {
+          name: true,
+          billingEmail: true,
+        },
+      },
+      load: {
+        select: {
+          externalLoadNumber: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getCustomersList(organizationId: string) {
+  return prisma.customer.findMany({
+    where: { organizationId },
+    select: {
+      id: true,
+      name: true,
+      billingEmail: true,
+      status: true,
+    },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function getFacilitiesList(organizationId: string) {
+  const [facilities, customers] = await Promise.all([
+    prisma.facility.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        timezone: true,
+        customer: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { name: "asc" },
     }),
     prisma.customer.findMany({
       where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+      },
       orderBy: { name: "asc" },
-    }),
-    prisma.facility.findMany({
-      where: { organizationId },
-      include: { customer: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.ruleSet.findMany({
-      where: { organizationId },
-      include: { customer: true, facility: true },
-      orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
-    }),
-    prisma.csvMappingTemplate.findMany({
-      where: { organizationId },
-      orderBy: { updatedAt: "desc" },
-    }),
-    prisma.invitation.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: "desc" },
     }),
   ]);
 
   return {
-    loads,
-    claims,
+    facilities,
+    customers,
+  };
+}
+
+export async function getRulesPageData(organizationId: string) {
+  const [rules, customers, facilities] = await Promise.all([
+    prisma.ruleSet.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        active: true,
+        detentionFreeMinutes: true,
+        detentionRatePerHour: true,
+        layoverFlatAmount: true,
+        tonuFlatAmount: true,
+        customer: {
+          select: {
+            name: true,
+          },
+        },
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
+    }),
+    prisma.customer.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.facility.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  return {
+    rules,
     customers,
     facilities,
-    rules,
-    templates,
-    invitations,
   };
+}
+
+export async function getImportsPageData(organizationId: string) {
+  return prisma.csvMappingTemplate.findMany({
+    where: { organizationId },
+    select: {
+      id: true,
+      name: true,
+      mappingJson: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getSettingsPageData(organizationId: string) {
+  return prisma.invitation.findMany({
+    where: { organizationId },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      status: true,
+      expiresAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 export async function getLoadDetail(organizationId: string, loadId: string) {
@@ -157,28 +300,63 @@ export async function getLoadDetail(organizationId: string, loadId: string) {
       id: loadId,
       organizationId,
     },
-    include: {
-      customer: true,
-      carrier: true,
-      facility: true,
-      stops: true,
+    select: {
+      id: true,
+      externalLoadNumber: true,
+      pickupDate: true,
+      deliveryDate: true,
+      customer: {
+        select: {
+          name: true,
+        },
+      },
+      carrier: {
+        select: {
+          name: true,
+        },
+      },
+      facility: {
+        select: {
+          name: true,
+        },
+      },
+      stops: {
+        select: {
+          id: true,
+          type: true,
+          facilityName: true,
+          timezone: true,
+          appointmentStart: true,
+          checkInTime: true,
+          departureTime: true,
+        },
+        orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+      },
       documents: {
-        include: {
-          extractedFields: true,
+        select: {
+          id: true,
+          fileName: true,
+          fileType: true,
+          fileSize: true,
+          storageUrl: true,
+          documentType: true,
+          extractionStatus: true,
+          extractionConfidence: true,
+          rawExtractionJson: true,
+          reviewedExtractionJson: true,
         },
         orderBy: { createdAt: "desc" },
       },
       candidates: {
-        include: {
-          ruleSet: true,
-          stop: true,
+        select: {
+          id: true,
+          type: true,
+          eligibilityStatus: true,
+          calculatedAmount: true,
+          explanation: true,
+          evidenceSummary: true,
         },
-      },
-      claim: {
-        include: {
-          lineItems: true,
-          messages: true,
-        },
+        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -190,18 +368,59 @@ export async function getClaimDetail(organizationId: string, claimId: string) {
       id: claimId,
       organizationId,
     },
-    include: {
-      organization: true,
-      customer: true,
-      load: {
-        include: {
-          documents: true,
-          stops: true,
-          candidates: true,
+    select: {
+      id: true,
+      claimNumber: true,
+      status: true,
+      totalAmount: true,
+      customer: {
+        select: {
+          name: true,
+          billingEmail: true,
         },
       },
-      lineItems: true,
-      messages: true,
+      load: {
+        select: {
+          externalLoadNumber: true,
+          documents: {
+            select: {
+              id: true,
+              fileName: true,
+              extractionStatus: true,
+              documentType: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
+          stops: {
+            select: {
+              id: true,
+              type: true,
+              facilityName: true,
+              timezone: true,
+              checkInTime: true,
+              departureTime: true,
+            },
+            orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+          },
+        },
+      },
+      lineItems: {
+        select: {
+          id: true,
+          accessorialType: true,
+          amount: true,
+          description: true,
+        },
+      },
+      messages: {
+        select: {
+          id: true,
+          direction: true,
+          subject: true,
+          body: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 }
